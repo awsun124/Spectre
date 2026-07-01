@@ -9,6 +9,7 @@ import torch
 import torch.nn as nn
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 
 from similar_songs import SongLibrary, build_song_embedding
 
@@ -118,7 +119,7 @@ async def lifespan(_app):
 app = FastAPI(title="Spectre Genre Classifier", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origin_regex=r"http://(localhost|127\.0\.0\.1):\d+",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -184,3 +185,17 @@ async def similar_songs(file: UploadFile = File(...), k: int = 5):
         raise HTTPException(status_code=400, detail=str(error)) from error
     finally:
         os.unlink(temp_path)
+
+
+@app.get("/songs/{song_title}")
+def download_song(song_title: str):
+    filepath = song_library.filepath_for_title(song_title)
+
+    if not filepath or not os.path.exists(filepath):
+        raise HTTPException(status_code=404, detail="Song not found.")
+
+    return FileResponse(
+        filepath,
+        media_type="audio/wav",
+        filename=os.path.basename(filepath),
+    )

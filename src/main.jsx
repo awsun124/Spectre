@@ -18,6 +18,10 @@ const demoMatches = [
 const apiBaseUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 const almostDoneProgress = 94;
 
+function downloadUrlFor(songTitle) {
+  return `${apiBaseUrl}/songs/${encodeURIComponent(songTitle)}`;
+}
+
 function buildDemoMatches(genre, fileName) {
   const seed = fileName.length + genre.length;
   const rankedSongs = demoMatches
@@ -232,6 +236,9 @@ function App() {
                 <p>{song.genre}</p>
               </div>
               <strong>{Math.round(song.similarity * 100)}%</strong>
+              <a className="download-link" href={downloadUrlFor(song.title)} download>
+                Download
+              </a>
             </article>
           ))}
         </div>

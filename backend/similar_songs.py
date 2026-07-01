@@ -112,3 +112,10 @@ class SongLibrary:
         chunks = self.audio_to_chunks(filepath)
         embedding = build_song_embedding(self.model, chunks, self.device)
         return self.most_similar_to_embedding(embedding, k=k)
+
+    def filepath_for_title(self, title):
+        safe_title = os.path.basename(title)
+        for filepath in self.song_files:
+            if os.path.basename(filepath) == safe_title:
+                return filepath
+        return None

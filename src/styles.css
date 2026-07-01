@@ -354,7 +354,7 @@ h1 {
 
 .rank-card {
   display: grid;
-  grid-template-columns: 44px minmax(0, 1fr) auto;
+  grid-template-columns: 44px minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 12px;
   padding: 14px;
@@ -388,6 +388,28 @@ h1 {
 
 .rank-card strong {
   color: #e3c8ff;
+}
+
+.download-link {
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
+  padding: 7px 10px;
+  color: #fff7ff;
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 0.74rem;
+  font-weight: 800;
+  text-decoration: none;
+  white-space: nowrap;
+  transition:
+    background 160ms ease,
+    border-color 160ms ease,
+    transform 160ms ease;
+}
+
+.download-link:hover {
+  border-color: rgba(226, 194, 255, 0.42);
+  background: rgba(164, 76, 255, 0.24);
+  transform: translateY(-1px);
 }
 
 @media (max-width: 920px) {
@@ -428,5 +450,14 @@ h1 {
 
   .result-strip {
     display: grid;
+  }
+
+  .rank-card {
+    grid-template-columns: 38px minmax(0, 1fr) auto;
+  }
+
+  .download-link {
+    grid-column: 2 / -1;
+    justify-self: start;
   }
 }
