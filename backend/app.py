@@ -119,7 +119,11 @@ async def lifespan(_app):
 app = FastAPI(title="Spectre Genre Classifier", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex=r"http://(localhost|127\.0\.0\.1):\d+",
+    allow_origins=[
+        "https://spectremlmusic.com",
+        "https://www.spectremlmusic.com",
+    ],
+    allow_origin_regex=r"https://.*\.vercel\.app|http://(localhost|127\.0\.0\.1):\d+",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
