@@ -265,6 +265,14 @@ h1 {
   display: none;
 }
 
+.file-hint {
+  margin: -14px 0 0;
+  color: #c9bae8;
+  font-size: 0.86rem;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
 .result-strip {
   display: grid;
   grid-template-columns: 1.6fr 1fr 0.7fr;

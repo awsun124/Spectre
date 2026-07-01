@@ -182,6 +182,7 @@ function App() {
             accept="audio/*,.wav,.mp3"
             onChange={handleUpload}
           />
+          <p className="file-hint">Accepts .wav files</p>
 
           <div className="result-strip">
             <div>
