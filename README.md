@@ -1,20 +1,7 @@
 # Spectre
 
-Spectre is a React front end for the GTZAN music genre classifier notebook.
+Spectre is a music genre classifier built around a CNN trained on the GTZAN dataset.
 
-The notebook trains a CNN on mel spectrogram chunks, predicts one of 10 genres, and compares learned song embeddings to find similar tracks. This UI turns that idea into a single Shazam-style screen:
+The project has two main parts. The frontend is a React app with a circular upload/scanning interface, the predicted genre, and a similar-song leaderboard. The backend is a FastAPI server that loads our trained PyTorch CNN weights from `best_model.pth`, turns uploaded audio into mel spectrogram chunks, and runs the model to classify the song.
 
-- uses the GTZAN music genre classification dataset
-- upload a song
-- show a scanning animation
-- display the predicted genre and confidence
-- show a top 5 similar-song leaderboard
-
-The current prediction logic is a front-end demo so the app is usable without a running Python server. The next step is to expose the trained `best_model.pth` through a small API and replace the mock result in `src/main.jsx`.
-
-## Run
-
-```bash
-npm install
-npm run dev
-```
+It takes embeddings from the model's learned feature layers, compares the uploaded song against cached embeddings from the GTZAN library, and returns the closest matches by cosine similarity.

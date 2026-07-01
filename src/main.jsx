@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles.css';
 
@@ -28,21 +28,7 @@ const librarySongs = [
   { title: 'disco.00012.wav', genre: 'disco' },
 ];
 
-function pickGenre(fileName) {
-  const lowerName = fileName.toLowerCase();
-  const directMatch = genres.find((genre) => lowerName.includes(genre));
-
-  if (directMatch) {
-    return directMatch;
-  }
-
-  let score = 0;
-  for (const letter of lowerName) {
-    score += letter.charCodeAt(0);
-  }
-
-  return genres[score % genres.length];
-}
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 function buildLeaderboard(genre, fileName) {
   const seed = fileName.length + genre.length;
@@ -62,11 +48,18 @@ function buildLeaderboard(genre, fileName) {
 
 function App() {
   const fileInputRef = useRef(null);
+  const progressTimerRef = useRef(null);
   const [track, setTrack] = useState(null);
   const [isScanning, setIsScanning] = useState(false);
+  const [scanProgress, setScanProgress] = useState(0);
   const [result, setResult] = useState(null);
+  const [errorMessage, setErrorMessage] = useState('');
 
   const leaderboard = useMemo(() => {
+    if (result?.similarSongs?.length) {
+      return result.similarSongs;
+    }
+
     if (!result || !track) {
       return buildLeaderboard('blues', 'demo');
     }
@@ -74,7 +67,13 @@ function App() {
     return buildLeaderboard(result.genre, track.name);
   }, [result, track]);
 
-  function handleUpload(event) {
+  useEffect(() => {
+    return () => {
+      window.clearInterval(progressTimerRef.current);
+    };
+  }, []);
+
+  async function handleUpload(event) {
     const file = event.target.files?.[0];
 
     if (!file) {
@@ -84,15 +83,43 @@ function App() {
     const audioUrl = URL.createObjectURL(file);
     setTrack({ name: file.name, size: file.size, url: audioUrl });
     setResult(null);
+    setErrorMessage('');
+    setScanProgress(3);
     setIsScanning(true);
-
-    window.setTimeout(() => {
-      const genre = pickGenre(file.name);
-      setResult({
-        genre,
+    window.clearInterval(progressTimerRef.current);
+    progressTimerRef.current = window.setInterval(() => {
+      setScanProgress((currentProgress) => {
+        const nextProgress = currentProgress + Math.max(1.5, (94 - currentProgress) * 0.08);
+        return Math.min(94, nextProgress);
       });
+    }, 180);
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const response = await fetch(`${API_URL}/predict`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        throw new Error(body?.detail || 'The classifier could not read this audio file.');
+      }
+
+      const prediction = await response.json();
+      setResult(prediction);
+    } catch (error) {
+      setErrorMessage(
+        error.message ||
+          'Could not reach the Python model backend. Start it and try the upload again.',
+      );
+    } finally {
+      window.clearInterval(progressTimerRef.current);
+      setScanProgress(100);
       setIsScanning(false);
-    }, 1400);
+    }
   }
 
   function openFilePicker() {
@@ -113,13 +140,36 @@ function App() {
         </header>
 
         <div className="scan-stage">
-          <div className={`wave-field ${isScanning ? 'is-scanning' : ''}`}>
+          <div
+            className={`wave-field ${isScanning ? 'is-scanning' : ''} ${
+              track ? 'has-track' : ''
+            } ${result ? 'is-complete' : ''}`}
+          >
             <span className="wave wave-one" />
             <span className="wave wave-two" />
             <span className="wave wave-three" />
-            <button className="scan-button" onClick={openFilePicker} type="button">
+            <div
+              className="scan-progress-ring"
+              role="progressbar"
+              aria-label="Model analysis progress"
+              aria-valuemin="0"
+              aria-valuemax="100"
+              aria-valuenow={Math.round(scanProgress)}
+              style={{ '--scan-progress': `${scanProgress * 3.6}deg` }}
+            />
+            <button
+              className="scan-button"
+              disabled={isScanning}
+              onClick={openFilePicker}
+              type="button"
+            >
               <span className="scan-icon">♪</span>
-              <span>{track ? 'Scan another' : 'Upload song'}</span>
+              <span className="scan-label">
+                {isScanning ? 'Analyzing' : track ? 'Scan another' : 'Upload song'}
+              </span>
+              <span className="scan-status">
+                {isScanning ? `${Math.round(scanProgress)}%` : result ? 'Complete' : 'Ready'}
+              </span>
             </button>
           </div>
 
@@ -147,6 +197,14 @@ function App() {
               <strong>82.7%</strong>
             </div>
           </div>
+
+          {result && (
+            <p className="confidence-line">
+              Confidence {Math.round(result.confidence * 100)}% from {result.chunks} audio chunks.
+            </p>
+          )}
+
+          {errorMessage && <p className="error-line">{errorMessage}</p>}
 
           {track && (
             <audio className="audio-player" src={track.url} controls>

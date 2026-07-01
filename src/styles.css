@@ -167,6 +167,7 @@ h1 {
     inset 0 0 0 1px rgba(255, 255, 255, 0.2);
   cursor: pointer;
   font-weight: 800;
+  z-index: 2;
   transition:
     transform 180ms ease,
     box-shadow 180ms ease;
@@ -179,11 +180,85 @@ h1 {
     inset 0 0 0 1px rgba(255, 255, 255, 0.28);
 }
 
+.scan-button:disabled {
+  cursor: wait;
+  transform: none;
+}
+
+.scan-progress-ring {
+  position: absolute;
+  width: 202px;
+  aspect-ratio: 1;
+  border-radius: 999px;
+  background:
+    conic-gradient(
+      from -90deg,
+      #f8eeff var(--scan-progress),
+      rgba(255, 255, 255, 0.13) 0deg
+    );
+  box-shadow:
+    0 0 34px rgba(216, 170, 255, 0.38),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+  opacity: 0;
+  transform: scale(0.9);
+  transition:
+    background 180ms linear,
+    opacity 220ms ease,
+    transform 220ms ease;
+  z-index: 1;
+}
+
+.scan-progress-ring::after {
+  position: absolute;
+  inset: 8px;
+  border-radius: inherit;
+  background: rgba(18, 12, 32, 0.92);
+  content: "";
+}
+
+.has-track .scan-progress-ring,
+.is-scanning .scan-progress-ring {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.is-scanning .scan-progress-ring {
+  animation: progress-glow 1.2s ease-in-out infinite alternate;
+}
+
+@keyframes progress-glow {
+  from {
+    box-shadow:
+      0 0 26px rgba(216, 170, 255, 0.28),
+      inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+  }
+
+  to {
+    box-shadow:
+      0 0 48px rgba(216, 170, 255, 0.56),
+      inset 0 0 0 1px rgba(255, 255, 255, 0.18);
+  }
+}
+
 .scan-icon {
   display: block;
-  margin-bottom: -28px;
+  margin-bottom: -22px;
   font-size: 3.1rem;
   line-height: 1;
+}
+
+.scan-label,
+.scan-status {
+  display: block;
+  line-height: 1.05;
+}
+
+.scan-status {
+  margin-top: -20px;
+  color: #dbc7ff;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
 }
 
 .file-input {
@@ -221,6 +296,23 @@ h1 {
 .genre-name {
   color: #d9b4ff;
   text-transform: capitalize;
+}
+
+.confidence-line,
+.error-line {
+  width: min(100%, 860px);
+  margin: -8px 0 0;
+  font-size: 0.92rem;
+  line-height: 1.4;
+  text-align: center;
+}
+
+.confidence-line {
+  color: #d7caee;
+}
+
+.error-line {
+  color: #ffb6ca;
 }
 
 .audio-player {
