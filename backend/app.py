@@ -1,6 +1,7 @@
 import os
 import tempfile
 from collections import Counter
+from contextlib import asynccontextmanager
 
 import librosa
 import numpy as np
@@ -9,7 +10,7 @@ import torch.nn as nn
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
-from similar_songs import SongLibrary, build_uploaded_identity
+from similar_songs import SongLibrary, build_song_embedding
 
 
 SAMPLE_RATE = 22050
@@ -67,22 +68,6 @@ class GenreCNN(nn.Module):
         return self.head(x)
 
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-model = GenreCNN(n_classes=len(GENRES)).to(device)
-model.load_state_dict(torch.load(MODEL_PATH, map_location=device))
-model.eval()
-song_library = SongLibrary(model, audio_to_chunks=lambda filepath: audio_to_chunks(filepath), device=device)
-
-app = FastAPI(title="Spectre Genre Classifier")
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-
 def audio_to_chunks(filepath):
     y, sr = librosa.load(filepath, sr=SAMPLE_RATE, mono=True)
 
@@ -106,9 +91,70 @@ def audio_to_chunks(filepath):
     return torch.tensor(np.stack(chunks), dtype=torch.float32).unsqueeze(1)
 
 
-dataset_dir = os.getenv("GTZAN_DATASET_DIR")
-if dataset_dir and not song_library.ready:
-    song_library.build_from_directory(dataset_dir)
+def load_model():
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = GenreCNN(n_classes=len(GENRES)).to(device)
+    model.load_state_dict(torch.load(MODEL_PATH, map_location=device))
+    model.eval()
+    return model, device
+
+
+model, device = load_model()
+song_library = SongLibrary(model, audio_to_chunks=audio_to_chunks, device=device)
+
+
+def build_song_library_if_needed():
+    dataset_dir = os.getenv("GTZAN_DATASET_DIR")
+    if dataset_dir and not song_library.ready:
+        song_library.build_from_directory(dataset_dir)
+
+
+@asynccontextmanager
+async def lifespan(_app):
+    build_song_library_if_needed()
+    yield
+
+
+app = FastAPI(title="Spectre Genre Classifier", lifespan=lifespan)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+async def save_upload_to_temp_file(uploaded_file):
+    suffix = os.path.splitext(uploaded_file.filename or "")[1] or ".wav"
+
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp_file:
+        temp_file.write(await uploaded_file.read())
+        return temp_file.name
+
+
+def classify_chunks(chunks):
+    with torch.no_grad():
+        logits = model(chunks)
+        probabilities = torch.softmax(logits, dim=1)
+        chunk_predictions = probabilities.argmax(dim=1).cpu().tolist()
+        predicted_index = Counter(chunk_predictions).most_common(1)[0][0]
+        confidence = probabilities[:, predicted_index].mean().item()
+
+    return predicted_index, confidence, len(chunk_predictions)
+
+
+def predict_audio_file(filepath):
+    chunks = audio_to_chunks(filepath).to(device)
+    predicted_index, confidence, chunk_count = classify_chunks(chunks)
+    embedding = build_song_embedding(model, chunks, device)
+
+    return {
+        "genre": GENRES[predicted_index],
+        "confidence": round(confidence, 4),
+        "chunks": chunk_count,
+        "similarSongs": song_library.most_similar_to_embedding(embedding),
+    }
 
 
 @app.get("/health")
@@ -118,28 +164,10 @@ def health():
 
 @app.post("/predict")
 async def predict(file: UploadFile = File(...)):
-    suffix = os.path.splitext(file.filename or "")[1] or ".wav"
-
-    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp_file:
-        temp_file.write(await file.read())
-        temp_path = temp_file.name
+    temp_path = await save_upload_to_temp_file(file)
 
     try:
-        chunks = audio_to_chunks(temp_path).to(device)
-        with torch.no_grad():
-            logits = model(chunks)
-            probabilities = torch.softmax(logits, dim=1)
-            chunk_predictions = probabilities.argmax(dim=1).cpu().tolist()
-            predicted_index = Counter(chunk_predictions).most_common(1)[0][0]
-            confidence = probabilities[:, predicted_index].mean().item()
-
-        identity = build_uploaded_identity(model, chunks, device)
-        return {
-            "genre": GENRES[predicted_index],
-            "confidence": round(confidence, 4),
-            "chunks": len(chunk_predictions),
-            "similarSongs": song_library.most_similar_to_identity(identity),
-        }
+        return predict_audio_file(temp_path)
     except Exception as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
     finally:
@@ -148,11 +176,7 @@ async def predict(file: UploadFile = File(...)):
 
 @app.post("/similar-songs")
 async def similar_songs(file: UploadFile = File(...), k: int = 5):
-    suffix = os.path.splitext(file.filename or "")[1] or ".wav"
-
-    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp_file:
-        temp_file.write(await file.read())
-        temp_path = temp_file.name
+    temp_path = await save_upload_to_temp_file(file)
 
     try:
         return {"similarSongs": song_library.most_similar_to_audio(temp_path, k=k)}

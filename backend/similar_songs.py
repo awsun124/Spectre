@@ -9,17 +9,17 @@ import torch
 LIBRARY_PATH = os.path.join(os.path.dirname(__file__), "model", "song_library.npz")
 
 
-def get_identity(model, x):
-    feats = model.conv(x)
-    feats = model.pool(feats)
-    return feats.flatten(1)
+def extract_embedding(model, chunks):
+    features = model.conv(chunks)
+    pooled_features = model.pool(features)
+    return pooled_features.flatten(1)
 
 
-def build_uploaded_identity(model, chunks, device):
+def build_song_embedding(model, chunks, device):
     model.eval()
     with torch.no_grad():
-        identities = get_identity(model, chunks.to(device)).cpu().numpy()
-    return identities.mean(axis=0)
+        chunk_embeddings = extract_embedding(model, chunks.to(device)).cpu().numpy()
+    return chunk_embeddings.mean(axis=0)
 
 
 def cosine_similarity(vector, matrix):
@@ -61,15 +61,15 @@ class SongLibrary:
         )
 
     def build_from_directory(self, dataset_dir):
-        files = sorted(glob.glob(os.path.join(dataset_dir, "**", "*.wav"), recursive=True))
-        if not files:
+        song_paths = sorted(glob.glob(os.path.join(dataset_dir, "**", "*.wav"), recursive=True))
+        if not song_paths:
             raise ValueError(f"No .wav files found in {dataset_dir}")
 
-        identities_by_song = defaultdict(list)
+        embeddings_by_song = defaultdict(list)
         genre_by_song = {}
 
         self.model.eval()
-        for filepath in files:
+        for filepath in song_paths:
             genre = os.path.basename(os.path.dirname(filepath))
             try:
                 chunks = self.audio_to_chunks(filepath)
@@ -77,26 +77,26 @@ class SongLibrary:
                 continue
 
             with torch.no_grad():
-                identities = get_identity(self.model, chunks.to(self.device)).cpu().numpy()
+                chunk_embeddings = extract_embedding(self.model, chunks.to(self.device)).cpu().numpy()
 
-            identities_by_song[filepath].extend(identities)
+            embeddings_by_song[filepath].extend(chunk_embeddings)
             genre_by_song[filepath] = genre
 
-        if not identities_by_song:
+        if not embeddings_by_song:
             raise ValueError(f"No readable .wav files found in {dataset_dir}")
 
-        self.song_files = list(identities_by_song.keys())
+        self.song_files = list(embeddings_by_song.keys())
         self.song_genres = [genre_by_song[filepath] for filepath in self.song_files]
         self.song_identity = np.stack(
-            [np.mean(identities_by_song[filepath], axis=0) for filepath in self.song_files]
+            [np.mean(embeddings_by_song[filepath], axis=0) for filepath in self.song_files]
         )
         self.save()
 
-    def most_similar_to_identity(self, identity, k=5):
+    def most_similar_to_embedding(self, embedding, k=5):
         if not self.ready:
             return []
 
-        similarities = cosine_similarity(identity, self.song_identity)
+        similarities = cosine_similarity(embedding, self.song_identity)
         order = np.argsort(similarities)[::-1][:k]
 
         return [
@@ -110,5 +110,5 @@ class SongLibrary:
 
     def most_similar_to_audio(self, filepath, k=5):
         chunks = self.audio_to_chunks(filepath)
-        identity = build_uploaded_identity(self.model, chunks, self.device)
-        return self.most_similar_to_identity(identity, k=k)
+        embedding = build_song_embedding(self.model, chunks, self.device)
+        return self.most_similar_to_embedding(embedding, k=k)

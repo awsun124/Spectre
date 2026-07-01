@@ -2,20 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles.css';
 
-const genres = [
-  'blues',
-  'classical',
-  'country',
-  'disco',
-  'hiphop',
-  'jazz',
-  'metal',
-  'pop',
-  'reggae',
-  'rock',
-];
-
-const librarySongs = [
+const demoMatches = [
   { title: 'blues.00055.wav', genre: 'blues' },
   { title: 'blues.00050.wav', genre: 'blues' },
   { title: 'jazz.00041.wav', genre: 'jazz' },
@@ -28,11 +15,12 @@ const librarySongs = [
   { title: 'disco.00012.wav', genre: 'disco' },
 ];
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const apiBaseUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const almostDoneProgress = 94;
 
-function buildLeaderboard(genre, fileName) {
+function buildDemoMatches(genre, fileName) {
   const seed = fileName.length + genre.length;
-  const ranked = librarySongs
+  const rankedSongs = demoMatches
     .map((song, index) => {
       const genreBoost = song.genre === genre ? 0.18 : 0;
       const movement = ((seed + index * 17) % 24) / 100;
@@ -43,7 +31,7 @@ function buildLeaderboard(genre, fileName) {
     })
     .sort((a, b) => b.similarity - a.similarity);
 
-  return ranked.slice(0, 5);
+  return rankedSongs.slice(0, 5);
 }
 
 function App() {
@@ -61,10 +49,10 @@ function App() {
     }
 
     if (!result || !track) {
-      return buildLeaderboard('blues', 'demo');
+      return buildDemoMatches('blues', 'demo');
     }
 
-    return buildLeaderboard(result.genre, track.name);
+    return buildDemoMatches(result.genre, track.name);
   }, [result, track]);
 
   useEffect(() => {
@@ -72,6 +60,41 @@ function App() {
       window.clearInterval(progressTimerRef.current);
     };
   }, []);
+
+  function startProgressRing() {
+    setScanProgress(3);
+    window.clearInterval(progressTimerRef.current);
+
+    progressTimerRef.current = window.setInterval(() => {
+      setScanProgress((currentProgress) => {
+        const remainingProgress = almostDoneProgress - currentProgress;
+        const nextStep = Math.max(1.5, remainingProgress * 0.08);
+        return Math.min(almostDoneProgress, currentProgress + nextStep);
+      });
+    }, 180);
+  }
+
+  function finishProgressRing() {
+    window.clearInterval(progressTimerRef.current);
+    setScanProgress(100);
+  }
+
+  async function askModelToClassify(file) {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const response = await fetch(`${apiBaseUrl}/predict`, {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const body = await response.json().catch(() => null);
+      throw new Error(body?.detail || 'The classifier could not read this audio file.');
+    }
+
+    return response.json();
+  }
 
   async function handleUpload(event) {
     const file = event.target.files?.[0];
@@ -84,31 +107,11 @@ function App() {
     setTrack({ name: file.name, size: file.size, url: audioUrl });
     setResult(null);
     setErrorMessage('');
-    setScanProgress(3);
     setIsScanning(true);
-    window.clearInterval(progressTimerRef.current);
-    progressTimerRef.current = window.setInterval(() => {
-      setScanProgress((currentProgress) => {
-        const nextProgress = currentProgress + Math.max(1.5, (94 - currentProgress) * 0.08);
-        return Math.min(94, nextProgress);
-      });
-    }, 180);
+    startProgressRing();
 
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-
-      const response = await fetch(`${API_URL}/predict`, {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (!response.ok) {
-        const body = await response.json().catch(() => null);
-        throw new Error(body?.detail || 'The classifier could not read this audio file.');
-      }
-
-      const prediction = await response.json();
+      const prediction = await askModelToClassify(file);
       setResult(prediction);
     } catch (error) {
       setErrorMessage(
@@ -116,8 +119,7 @@ function App() {
           'Could not reach the Python model backend. Start it and try the upload again.',
       );
     } finally {
-      window.clearInterval(progressTimerRef.current);
-      setScanProgress(100);
+      finishProgressRing();
       setIsScanning(false);
     }
   }
