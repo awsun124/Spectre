@@ -11,8 +11,8 @@ LIBRARY_PATH = os.path.join(os.path.dirname(__file__), "model", "song_library.np
 
 def extract_embedding(model, chunks):
     features = model.conv(chunks)
-    pooled_features = model.pool(features)
-    return pooled_features.flatten(1)
+    pooled = model.pool(features)
+    return pooled.flatten(1)
 
 
 def build_song_embedding(model, chunks, device):
@@ -35,6 +35,7 @@ class SongLibrary:
         self.device = device
         self.song_files = []
         self.song_genres = []
+        # Keep the cache field name compatible with existing .npz files.
         self.song_identity = None
         self.load()
 
@@ -74,10 +75,13 @@ class SongLibrary:
             try:
                 chunks = self.audio_to_chunks(filepath)
             except Exception:
+                # A bad audio file should not prevent indexing the rest.
                 continue
 
             with torch.no_grad():
-                chunk_embeddings = extract_embedding(self.model, chunks.to(self.device)).cpu().numpy()
+                chunk_embeddings = (
+                    extract_embedding(self.model, chunks.to(self.device)).cpu().numpy()
+                )
 
             embeddings_by_song[filepath].extend(chunk_embeddings)
             genre_by_song[filepath] = genre

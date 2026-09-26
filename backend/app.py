@@ -70,21 +70,21 @@ class GenreCNN(nn.Module):
 
 
 def audio_to_chunks(filepath):
-    y, sr = librosa.load(filepath, sr=SAMPLE_RATE, mono=True)
+    audio, sample_rate = librosa.load(filepath, sr=SAMPLE_RATE, mono=True)
 
-    if len(y) == 0:
+    if len(audio) == 0:
         raise ValueError("Audio file is empty.")
 
     chunks = []
-    total_chunks = max(1, int(np.ceil(len(y) / CHUNK_SAMPLES)))
+    total_chunks = max(1, int(np.ceil(len(audio) / CHUNK_SAMPLES)))
     for index in range(total_chunks):
         start = index * CHUNK_SAMPLES
-        chunk = y[start : start + CHUNK_SAMPLES]
+        chunk = audio[start : start + CHUNK_SAMPLES]
 
         if len(chunk) < CHUNK_SAMPLES:
             chunk = np.pad(chunk, (0, CHUNK_SAMPLES - len(chunk)))
 
-        mel = librosa.feature.melspectrogram(y=chunk, sr=sr, n_mels=N_MELS)
+        mel = librosa.feature.melspectrogram(y=chunk, sr=sample_rate, n_mels=N_MELS)
         mel_db = librosa.power_to_db(mel, ref=np.max)
         mel_db = (mel_db - mel_db.min()) / (mel_db.max() - mel_db.min() + 1e-6)
         chunks.append(mel_db)
@@ -143,6 +143,7 @@ def classify_chunks(chunks):
         logits = model(chunks)
         probabilities = torch.softmax(logits, dim=1)
         chunk_predictions = probabilities.argmax(dim=1).cpu().tolist()
+        # Vote by chunk, then average confidence for the winning genre.
         predicted_index = Counter(chunk_predictions).most_common(1)[0][0]
         confidence = probabilities[:, predicted_index].mean().item()
 

@@ -16,21 +16,22 @@ const demoMatches = [
 ];
 
 const apiBaseUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-const almostDoneProgress = 94;
+// Leave room for the response; the API does not report progress.
+const progressCap = 94;
 
-function downloadUrlFor(songTitle) {
+function songDownloadUrl(songTitle) {
   return `${apiBaseUrl}/songs/${encodeURIComponent(songTitle)}`;
 }
 
-function buildDemoMatches(genre, fileName) {
+function getDemoMatches(genre, fileName) {
   const seed = fileName.length + genre.length;
   const rankedSongs = demoMatches
     .map((song, index) => {
       const genreBoost = song.genre === genre ? 0.18 : 0;
-      const movement = ((seed + index * 17) % 24) / 100;
+      const scoreOffset = ((seed + index * 17) % 24) / 100;
       return {
         ...song,
-        similarity: Math.min(0.99, 0.68 + genreBoost + movement),
+        similarity: Math.min(0.99, 0.68 + genreBoost + scoreOffset),
       };
     })
     .sort((a, b) => b.similarity - a.similarity);
@@ -53,10 +54,10 @@ function App() {
     }
 
     if (!result || !track) {
-      return buildDemoMatches('blues', 'demo');
+      return getDemoMatches('blues', 'demo');
     }
 
-    return buildDemoMatches(result.genre, track.name);
+    return getDemoMatches(result.genre, track.name);
   }, [result, track]);
 
   useEffect(() => {
@@ -65,25 +66,25 @@ function App() {
     };
   }, []);
 
-  function startProgressRing() {
+  function startProgress() {
     setScanProgress(3);
     window.clearInterval(progressTimerRef.current);
 
     progressTimerRef.current = window.setInterval(() => {
-      setScanProgress((currentProgress) => {
-        const remainingProgress = almostDoneProgress - currentProgress;
-        const nextStep = Math.max(1.5, remainingProgress * 0.08);
-        return Math.min(almostDoneProgress, currentProgress + nextStep);
+      setScanProgress((progress) => {
+        const remaining = progressCap - progress;
+        const step = Math.max(1.5, remaining * 0.08);
+        return Math.min(progressCap, progress + step);
       });
     }, 180);
   }
 
-  function finishProgressRing() {
+  function finishProgress() {
     window.clearInterval(progressTimerRef.current);
     setScanProgress(100);
   }
 
-  async function askModelToClassify(file) {
+  async function classifyAudio(file) {
     const formData = new FormData();
     formData.append('file', file);
 
@@ -112,10 +113,10 @@ function App() {
     setResult(null);
     setErrorMessage('');
     setIsScanning(true);
-    startProgressRing();
+    startProgress();
 
     try {
-      const prediction = await askModelToClassify(file);
+      const prediction = await classifyAudio(file);
       setResult(prediction);
     } catch (error) {
       setErrorMessage(
@@ -123,7 +124,7 @@ function App() {
           'Could not reach the Python model backend. Start it and try the upload again.',
       );
     } finally {
-      finishProgressRing();
+      finishProgress();
       setIsScanning(false);
     }
   }
@@ -236,7 +237,7 @@ function App() {
                 <p>{song.genre}</p>
               </div>
               <strong>{Math.round(song.similarity * 100)}%</strong>
-              <a className="download-link" href={downloadUrlFor(song.title)} download>
+              <a className="download-link" href={songDownloadUrl(song.title)} download>
                 Download
               </a>
             </article>
